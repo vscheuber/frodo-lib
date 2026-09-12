@@ -950,6 +950,16 @@ export const helpMetadata: MethodHelpDoc[] = [
     returns: "{Promise<Tokens>} object containing the tokens",
   },
   {
+    typeName: "Authenticate",
+    methodName: "applyAccessToken",
+    signature: "applyAccessToken(token: AccessTokenMetaType): Promise<Tokens>",
+    description: "Applies an already-obtained, externally-issued OAuth2 access token to `state`, ready for immediate use. Unlike `getTokens()`/ `getTokensInteractive()`, this never talks to an authorization endpoint itself — the token was already minted (and, by the caller's own contract, already verified) elsewhere; this only wires it onto `state` using the exact same deployment-type-specific handling a real browser login uses. Intended for hosts that resolve their own caller identity per request (e.g. an MCP server acting as an OAuth2 resource server) rather than performing a login themselves.",
+    params: [
+      { name: "token", type: "AccessTokenMetaType", description: "the already-obtained access token", required: true },
+    ],
+    returns: "{Promise<Tokens>} object containing the tokens",
+  },
+  {
     typeName: "AuthenticationSettings",
     methodName: "readAuthenticationSettings",
     signature: "readAuthenticationSettings( globalConfig: boolean ): Promise<AuthenticationSettingsSkeleton>",

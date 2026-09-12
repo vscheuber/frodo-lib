@@ -108,6 +108,20 @@ export type Authenticate = {
    * @returns {Promise<Tokens>} object containing the tokens
    */
   getTokensInteractive(options: BrowserLoginOptions): Promise<Tokens>;
+  /**
+   * Applies an already-obtained, externally-issued OAuth2 access token to
+   * `state`, ready for immediate use. Unlike `getTokens()`/
+   * `getTokensInteractive()`, this never talks to an authorization endpoint
+   * itself — the token was already minted (and, by the caller's own
+   * contract, already verified) elsewhere; this only wires it onto `state`
+   * using the exact same deployment-type-specific handling a real browser
+   * login uses. Intended for hosts that resolve their own caller identity
+   * per request (e.g. an MCP server acting as an OAuth2 resource server)
+   * rather than performing a login themselves.
+   * @param {AccessTokenMetaType} token the already-obtained access token
+   * @returns {Promise<Tokens>} object containing the tokens
+   */
+  applyAccessToken(token: AccessTokenMetaType): Promise<Tokens>;
 };
 
 export default (state: State): Authenticate => {
@@ -134,6 +148,9 @@ export default (state: State): Authenticate => {
     },
     async getTokensInteractive(options: BrowserLoginOptions) {
       return getTokensInteractive({ ...options, state });
+    },
+    async applyAccessToken(token: AccessTokenMetaType) {
+      return applyAccessToken({ token, state });
     },
   };
 };
@@ -2453,6 +2470,67 @@ function applyInteractiveToken({
       throw new FrodoError(
         `Browser login is not yet implemented for deployment type '${deploymentType}'. Supported: ${Constants.CLOUD_DEPLOYMENT_TYPE_KEY}, ${Constants.FORGEOPS_DEPLOYMENT_TYPE_KEY}, ${Constants.CLASSIC_DEPLOYMENT_TYPE_KEY}.`
       );
+  }
+}
+
+/**
+ * Applies an already-obtained, externally-issued access token to `state`,
+ * ready for immediate use.
+ *
+ * @remarks
+ * Reuses `applyInteractiveToken()` — the same deployment-type-specific
+ * wiring a real browser login uses — so an externally-issued token gets
+ * identical treatment: cloud gets the on-demand RFC 8693 token-exchange
+ * credential provider for AM-domain access (`applyCloudInteractiveToken()`),
+ * ForgeOps/classic get session-capture-script handling when the token
+ * carries a `sessionId` (`applyForgeopsInteractiveToken()`/
+ * `applyClassicInteractiveToken()`). Unlike a real browser login, no
+ * authorization endpoint is ever called here — the token already exists and,
+ * by this function's contract, was already verified by the caller before
+ * being handed to it.
+ *
+ * Deliberately never touches the token cache, regardless of
+ * `state.getUseTokenCache()`: this credential belongs to whichever remote
+ * party presented it for this one request, not to the operator who owns
+ * this process's local `Connections.json`/token cache, so nothing about it
+ * should be persisted to disk.
+ */
+async function applyAccessToken({
+  token,
+  state,
+}: {
+  token: AccessTokenMetaType;
+  state: State;
+}): Promise<Tokens> {
+  const deploymentType = state.getDeploymentType();
+  if (!deploymentType) {
+    throw new FrodoError(
+      `Cannot apply an externally-issued access token: no deployment type is configured on this instance.`
+    );
+  }
+  try {
+    const knownUsername = await applyInteractiveToken({
+      deploymentType,
+      token,
+      state,
+    });
+    const resolvedSubject = await resolveBrowserLoginSubject({
+      rawSubject: getBrowserLoginSubject(token),
+      knownUsername,
+      deploymentType,
+      state,
+    });
+    state.setUsername(resolvedSubject);
+    return {
+      bearerToken: state.getBearerTokenMeta(),
+      userSessionToken: state.getUserSessionTokenMeta(),
+      pfBearerToken: state.getPfBearerTokenMeta(),
+      subject: resolvedSubject,
+      host: state.getHost(),
+      realm: state.getRealm() ? state.getRealm() : 'root',
+    };
+  } catch (error) {
+    throw new FrodoError(`Error applying access token`, error);
   }
 }
 
