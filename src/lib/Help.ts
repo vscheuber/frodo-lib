@@ -2258,6 +2258,14 @@ export const helpMetadata: MethodHelpDoc[] = [
     returns: "",
   },
   {
+    typeName: "Jose",
+    methodName: "verifyJwtAgainstJwks",
+    signature: "verifyJwtAgainstJwks( jwt: string, jwks: ExternalJwksDocument ): Promise<Record<string, unknown>>",
+    description: "Verifies a JWT's signature against an arbitrary JWKS document (e.g. a third-party OIDC provider's published key set) and returns its decoded payload. Pure signature verification only — issuer, audience, and expiry are the caller's responsibility.",
+    params: [],
+    returns: "",
+  },
+  {
     typeName: "Journey",
     methodName: "createSingleTreeExportTemplate",
     signature: "createSingleTreeExportTemplate(): SingleTreeExportInterface",
