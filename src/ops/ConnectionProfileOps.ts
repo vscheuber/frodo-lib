@@ -352,6 +352,15 @@ export function findConnectionProfiles({
   host: string;
   state: State;
 }): SecureConnectionProfileInterface[] {
+  // A falsy host (no host given at all, e.g. a command invoked with no
+  // host argument, no active connection, and no FRODO_HOST) must never
+  // match anything here -- without this guard, `profile.alias === host`
+  // below would be true for `undefined === undefined` against the first
+  // profile with no alias set, and `tenant.includes(host)` would be true
+  // for every tenant if `host` were `''`, silently resolving to an
+  // arbitrary (usually just the oldest-saved) profile instead of reporting
+  // that no host was specified.
+  if (!host) return [];
   const profiles: SecureConnectionProfileInterface[] = [];
   // First check for aliases
   for (const tenant in connectionProfiles) {
@@ -520,6 +529,11 @@ export async function getConnectionProfileByHost({
   const filename = getConnectionProfilesPath({ state });
   if (!fs.statSync(filename, { throwIfNoEntry: false })) {
     throw new FrodoError(`Connection profiles file ${filename} not found`);
+  }
+  if (!host) {
+    throw new FrodoError(
+      `No host specified. Provide a host URL, or a unique substring/alias identifying a saved connection profile.`
+    );
   }
   const connectionsData = JSON.parse(fs.readFileSync(filename, 'utf8'));
   const profiles = findConnectionProfiles({
