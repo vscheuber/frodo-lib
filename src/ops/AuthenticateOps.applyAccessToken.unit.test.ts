@@ -35,12 +35,18 @@ const exchangeTokenForScope = jest.fn(async (_args?: any): Promise<any> => ({
   expires_in: 30,
   expires: Date.now() + 30_000,
 }));
+// Defaults to a truthy client id — i.e. this token behaves like a real
+// browser/interactive-obtained one (test 3 relies on the exchange path
+// actually running). Test 7 overrides this to `undefined` to exercise the
+// BYOT (bring-your-own-token) fallback instead.
+const readMayActClientId = jest.fn((_jwt: string): string | undefined => 'AICMCPExchangeClient');
 
 jest.unstable_mockModule('./BrowserAuthenticateOps', () => ({
   runInteractiveAuthorizationCodeFlow,
   startDeviceAuthorizationFlow,
   refreshBrowserBearerToken,
   exchangeTokenForScope,
+  readMayActClientId,
 }));
 
 const getSessionInfo = jest.fn(async (_args?: any): Promise<any> => {
@@ -140,6 +146,8 @@ describe('applyAccessToken', () => {
     accessToken.mockClear();
     authorize.mockClear();
     exchangeTokenForScope.mockClear();
+    readMayActClientId.mockClear();
+    readMayActClientId.mockReturnValue('AICMCPExchangeClient');
     getSessionInfo.mockReset();
     resolveIdentity.mockClear();
   });
@@ -186,6 +194,21 @@ describe('applyAccessToken', () => {
       subjectToken: string;
     };
     expect(call.subjectToken).toBe('caller-supplied-token');
+  });
+
+  test("3b: cloud BYOT — a token with no 'may_act' claim falls back to using it directly, never attempting an exchange", async () => {
+    readMayActClientId.mockReturnValue(undefined);
+    const state = freshState('cloud', 'https://openam-cloud.example.com/am');
+    const { applyAccessToken } = AuthenticateOps(state);
+
+    await applyAccessToken(externalToken);
+    const credential = await state.getAmCredentialProvider()(['fr:am:*']);
+
+    expect(exchangeTokenForScope).not.toHaveBeenCalled();
+    expect(credential).toEqual({
+      header: 'Authorization',
+      value: 'Bearer caller-supplied-token',
+    });
   });
 
   test('4: cloud — resolves subject via IDM identity lookup and sets it on state', async () => {

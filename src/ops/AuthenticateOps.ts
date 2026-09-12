@@ -23,6 +23,7 @@ import { createPkcePair } from '../utils/PkceUtils';
 import {
   BrowserLoginPromptHandler,
   exchangeTokenForScope,
+  readMayActClientId,
   refreshBrowserBearerToken,
   runInteractiveAuthorizationCodeFlow,
   startDeviceAuthorizationFlow,
@@ -2394,12 +2395,23 @@ async function applyClassicInteractiveToken({
 
 /**
  * Applies a cloud browser-login token response to `state`: wires the
- * primary (IDM-only) bearer token, and installs the on-demand AM credential
- * provider that mints a fresh, short-lived RFC 8693-exchanged token
- * immediately before each AM-domain call (see the plan doc's Phase B).
- * Shared between a fresh interactive login and a cache-hit session-reuse
- * resume in a brand-new process — the provider closure is process-local and
- * never persisted, so it must be reinstalled either way.
+ * primary (IDM-only, by default) bearer token, and installs the on-demand
+ * AM credential provider used for every AM-domain call.
+ *
+ * @remarks
+ * The provider's behavior depends on whether the token actually carries a
+ * `may_act` claim (a real interactive/browser-obtained token minted through
+ * a client like `AICMCPClient` does; a BYOT — bring-your-own-token — token
+ * obtained via a service-account-style flow does not, since AM already
+ * accepts that kind directly): when present, it mints a fresh, short-lived
+ * RFC 8693-exchanged token immediately before each AM-domain call (see the
+ * plan doc's Phase B); when absent, it falls back to using the primary
+ * token directly, matching the non-interactive service-account login path
+ * (`state.setUseBearerTokenForAmApis(true)`) — never throwing for a token
+ * shape this provider just doesn't need to exchange. Shared between a
+ * fresh interactive login, a cache-hit session-reuse resume, and BYOT
+ * (`applyAccessToken`) in a brand-new process — the provider closure is
+ * process-local and never persisted, so it must be reinstalled either way.
  */
 async function applyCloudInteractiveToken({
   token,
@@ -2408,14 +2420,28 @@ async function applyCloudInteractiveToken({
   token: AccessTokenMetaType;
   state: State;
 }): Promise<string | undefined> {
-  // Deliberately not `state.setUseBearerTokenForAmApis(true)`: unlike
-  // the service-account path, this primary token is only accepted by
-  // IDM. AM-domain calls need a fresh RFC 8693 exchange
-  // (`exchangeTokenForScope`) immediately before each call — see the
-  // plan doc's Phase B for the full evidence trail. Setting the flag
-  // here would make every AM call fail with 401 using the wrong token.
+  // Deliberately not `state.setUseBearerTokenForAmApis(true)` here: unlike
+  // the service-account path, a real browser-login primary token is only
+  // accepted by IDM directly — AM-domain calls need the RFC 8693 exchange
+  // below. Setting the flag unconditionally would make every AM call for
+  // such a token fail with 401 using the wrong token. BYOT tokens that
+  // don't need the exchange are instead handled per-call, inside the
+  // provider below (not here), since that's the only place able to tell
+  // the two shapes apart cheaply (by inspecting the token itself).
   state.setBearerTokenMeta(token);
   state.setAmCredentialProvider(async (requiredScopes) => {
+    const subjectToken = state.getBearerToken();
+    // BYOT: a token minted through a client with no `may_act` delegation
+    // has nothing to exchange — it's already directly AM-usable (the same
+    // shape a non-interactive service-account login already uses without
+    // any exchange step). Only attempt the RFC 8693 exchange when the
+    // token actually names a client to exchange through.
+    if (!readMayActClientId(subjectToken)) {
+      return {
+        header: 'Authorization',
+        value: `Bearer ${subjectToken}`,
+      };
+    }
     const scope = resolveAvailableScope({
       requiredScopes:
         requiredScopes && requiredScopes.length > 0
@@ -2424,7 +2450,7 @@ async function applyCloudInteractiveToken({
       state,
     });
     const exchanged = await exchangeTokenForScope({
-      subjectToken: state.getBearerToken(),
+      subjectToken,
       scope,
       state,
     });
