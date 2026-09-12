@@ -1275,6 +1275,52 @@ export const helpMetadata: MethodHelpDoc[] = [
     returns: "{Promise<IdObjectSkeletonInterface>} A promise resolving to a service account object",
   },
   {
+    typeName: "ConnectionProfile",
+    methodName: "addAdditionalServiceAccount",
+    signature: "addAdditionalServiceAccount( host: string, name: string, svcacctId: string, svcacctJwk: JwkRsa, svcacctScope?: string ): Promise<void>",
+    description: "Add a named, independently-addressable service account to a connection profile, alongside its own single primary service account.",
+    params: [
+      { name: "host", type: "string", description: "host tenant, host url, unique substring, or alias", required: true },
+      { name: "name", type: "string", description: "unique name for this additional service account, within this profile", required: true },
+      { name: "svcacctId", type: "string", description: "service account uuid", required: true },
+      { name: "svcacctJwk", type: "JwkRsa", description: "service account JWK", required: true },
+      { name: "svcacctScope", type: "string", description: "(optional) granted OAuth2 scope", required: false },
+    ],
+    returns: "",
+  },
+  {
+    typeName: "ConnectionProfile",
+    methodName: "removeAdditionalServiceAccount",
+    signature: "removeAdditionalServiceAccount(host: string, name: string): void",
+    description: "Remove a named additional service account from a connection profile.",
+    params: [
+      { name: "host", type: "string", description: "host tenant, host url, unique substring, or alias", required: true },
+      { name: "name", type: "string", description: "name of the additional service account to remove", required: true },
+    ],
+    returns: "",
+  },
+  {
+    typeName: "ConnectionProfile",
+    methodName: "listAdditionalServiceAccounts",
+    signature: "listAdditionalServiceAccounts( host: string ): Pick<AdditionalServiceAccountInterface, 'name' | 'svcacctId' | 'svcacctScope'>[]",
+    description: "List the additional service accounts on a connection profile (no secrets).",
+    params: [
+      { name: "host", type: "string", description: "host tenant, host url, unique substring, or alias", required: true },
+    ],
+    returns: "",
+  },
+  {
+    typeName: "ConnectionProfile",
+    methodName: "getAdditionalServiceAccount",
+    signature: "getAdditionalServiceAccount( host: string, name: string ): Promise<AdditionalServiceAccountInterface>",
+    description: "Get one named additional service account from a connection profile, with its JWK decrypted.",
+    params: [
+      { name: "host", type: "string", description: "host tenant, host url, unique substring, or alias", required: true },
+      { name: "name", type: "string", description: "name of the additional service account to get", required: true },
+    ],
+    returns: "",
+  },
+  {
     typeName: "Connector",
     methodName: "createConnectorExportTemplate",
     signature: "createConnectorExportTemplate(): ConnectorExportInterface",
